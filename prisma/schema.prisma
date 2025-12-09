@@ -8,12 +8,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/*
-  FINAL Prisma schema for Mala.ai MVP
-  - History: stores Q&A (question in screen_text), explanation, transcript JSON
-  - UserSetting: per-user language preference
-  - PdfDocument / PdfExplanation: lightweight PDF support
-*/
+/// FINAL Prisma schema for Mala.ai MVP
+/// - History: stores Q&A, explanation, transcript JSON
+/// - UserSetting: per-user language preference
+/// - PdfDocument / PdfExplanation: lightweight PDF support
 
 model History {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Text
@@ -35,7 +33,7 @@ model History {
 model UserSetting {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Text
   userId    String   @unique @map("user_id") @db.Text
-  language  String   @default("en") @db.Text   // 'en' | 'hi' | 'te'
+  language  String   @default("en") @db.Text
   createdAt DateTime @map("created_at") @default(now())
   updatedAt DateTime @map("updated_at") @default(now()) @updatedAt
 
@@ -70,6 +68,6 @@ model PdfExplanation {
   createdAt    DateTime      @map("created_at") @default(now())
 
   @@map("pdf_explanation")
-  @@index([pdfId], name: "idx_pdfexplanation_pdf_id")  // FIXED (was invalid)
+  @@index([pdfId], name: "idx_pdfexplanation_pdf_id")
   @@index([userId], name: "idx_pdfexplanation_user_id")
 }
