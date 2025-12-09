@@ -9,15 +9,15 @@ datasource db {
 }
 
 /*
-  Final Prisma schema for Mala.ai MVP
-  - History: stores Q&A (question stored in screen_text), explanation, transcript JSON, timestamps
+  FINAL Prisma schema for Mala.ai MVP
+  - History: stores Q&A (question in screen_text), explanation, transcript JSON
   - UserSetting: per-user language preference
-  - PdfDocument / PdfExplanation: support for PDF explain feature
+  - PdfDocument / PdfExplanation: lightweight PDF support
 */
 
 model History {
-  id          String   @id @default(dbgenerated("gen_random_uuid()::text")) @db.Text
-  userId      String?  @map("user_id")                                      @db.Text
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Text
+  userId      String?  @map("user_id") @db.Text
   title       String?  @db.Text
   screenText  String   @map("screen_text") @db.Text
   explanation String   @db.Text
@@ -33,7 +33,7 @@ model History {
 }
 
 model UserSetting {
-  id        String   @id @default(dbgenerated("gen_random_uuid()::text")) @db.Text
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Text
   userId    String   @unique @map("user_id") @db.Text
   language  String   @default("en") @db.Text   // 'en' | 'hi' | 'te'
   createdAt DateTime @map("created_at") @default(now())
@@ -42,14 +42,8 @@ model UserSetting {
   @@map("user_settings")
 }
 
-/*
-  PDF models (kept lightweight for MVP).
-  PdfDocument stores metadata about uploaded PDFs.
-  PdfExplanation stores the LLM explanation(s) produced for a PDF.
-*/
-
 model PdfDocument {
-  id          String           @id @default(dbgenerated("gen_random_uuid()::text")) @db.Text
+  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Text
   userId      String?          @map("user_id") @db.Text
   filename    String           @db.Text
   storagePath String?          @map("storage_path") @db.Text
@@ -66,18 +60,16 @@ model PdfDocument {
 }
 
 model PdfExplanation {
-  id           String    @id @default(dbgenerated("gen_random_uuid()::text")) @db.Text
-  pdfId        String    @map("pdf_id") @db.Text
-  pdf          PdfDocument @relation(fields: [pdfId], references: [id], onDelete: Cascade)
-  userId       String?   @map("user_id") @db.Text
-  prompt       String    @db.Text
-  responseText String    @map("response_text") @db.Text
-  tokensUsed   Int?      @map("tokens_used") @db.Integer
-  createdAt    DateTime  @map("created_at") @default(now())
+  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Text
+  pdfId        String        @map("pdf_id") @db.Text
+  pdf          PdfDocument   @relation(fields: [pdfId], references: [id], onDelete: Cascade)
+  userId       String?       @map("user_id") @db.Text
+  prompt       String        @db.Text
+  responseText String        @map("response_text") @db.Text
+  tokensUsed   Int?          @map("tokens_used") @db.Integer
+  createdAt    DateTime      @map("created_at") @default(now())
 
   @@map("pdf_explanation")
-  @@index([pdfId], name: "idx_ pdfexplanation_pdf_id")
+  @@index([pdfId], name: "idx_pdfexplanation_pdf_id")  // FIXED (was invalid)
   @@index([userId], name: "idx_pdfexplanation_user_id")
 }
-
-
