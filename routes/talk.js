@@ -1,127 +1,87 @@
 // routes/talk.js
-const express = require('express');
+import express from "express";
+import OpenAI from "openai";
+import prisma from "../prismaClient.js"; // adjust path if needed
+
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
-const axios = require('axios');
-const { OpenAIApi, Configuration } = require('openai');
 
-const openai = new OpenAIApi(new Configuration({
-  apiKey: process.env.OPENAI_API_KEY
-}));
-
-/**
- * helper: optional TTS generator (ElevenLabs example)
- * returns { ttsUrl } or null
- * You can replace with OpenAI TTS or keep as null to use client-side TTS.
- */
-async function generateTTS(text, language = 'en') {
-  if (!process.env.ELEVENLABS_KEY) return null;
-
-  // ElevenLabs REST API example (replace voice_id with desired voice)
-  try {
-    const voiceId = process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM'; // default
-    const resp = await axios.post(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
-      { text },
-      {
-        headers: {
-          'xi-api-key': process.env.ELEVENLABS_KEY,
-          'Content-Type': 'application/json'
-        },
-        responseType: 'arraybuffer',
-        timeout: 120000
-      }
-    );
-
-    // upload to your S3 / Supabase storage here.
-    // For MVP we will return base64 in memory (NOT recommended for production)
-    const base64 = Buffer.from(resp.data, 'binary').toString('base64');
-    // Option A: upload base64 to storage and return URL
-    // Option B (temporary): return data URL (smaller apps only)
-    return { ttsDataUrl: `data:audio/mpeg;base64,${base64}` };
-  } catch (err) {
-    console.error('TTS error', err?.response?.data || err.message);
-    return null;
-  }
+// OpenAI client
+let openai = null;
+if (process.env.OPENAI_API_KEY) {
+  openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+} else {
+  console.warn("WARNING: OPENAI_API_KEY not set in environment!");
 }
 
 /**
- * POST /talk
- * body: { text: string, language?: 'en'|'hi'|'te', wantTTS?: boolean }
+ * Helper: call ChatGPT
+ * Keeps same model behavior as server.js
  */
-router.post('/', async (req, res) => {
+async function callChatGPT(systemPrompt, userPrompt, max_tokens = 800) {
+  if (!openai) throw new Error("OpenAI key missing");
+
+  const resp = await openai.chat.completions.create({
+    model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt }
+    ],
+    max_tokens,
+    temperature: 0.2
+  });
+
+  return resp.choices?.[0]?.message?.content ?? "";
+}
+
+/**
+ * POST /
+ * Body: { text: string, language?: 'en'|'hi'|'te' }
+ * Response: { answerText, saved }
+ */
+router.post("/", async (req, res) => {
   try {
-    const { text, language = null, wantTTS = false } = req.body;
-    if (!text || typeof text !== 'string' || text.trim().length === 0) {
-      return res.status(400).json({ error: 'text required' });
+    const { text, language = "en" } = req.body;
+    if (!text || typeof text !== "string" || text.trim().length === 0) {
+      return res.status(400).json({ error: "text is required" });
     }
 
-    // Resolve language priority: request -> user setting -> default 'en'
-    let lang = language;
-    if (!lang && req.user?.id) {
-      const us = await prisma.userSetting.findUnique({ where: { userId: req.user.id }});
-      if (us) lang = us.language;
-    }
-    lang = lang || 'en';
+    // map language label for prompt clarity
+    const langLabel =
+      language === "hi" ? "Hindi" : language === "te" ? "Telugu" : "English";
 
-    // Build system & user prompt
-    const systemPrompt = `You are Mala.ai, an assistant for students. Always reply in ${lang === 'te' ? 'Telugu' : (lang === 'hi' ? 'Hindi' : 'English')}. Keep answers short, simple, and friendly. When asked to explain a concept, provide: 1) 1-2 line summary, 2) 3 short bullets of key points, 3) 1 example or quick question.`;
+    const systemPrompt = `You are Mala.ai. Reply simply and clearly in ${langLabel}. Provide a 1-2 line summary, 2-3 short bullet points, and one quick example when appropriate. Keep language friendly and concise for a student.`;
 
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: text }
+    // Use the raw text user sent as the user prompt
+    const answer = await callChatGPT(systemPrompt, text, 700);
+
+    // build transcript entry (keeps format consistent with schema)
+    const transcript = [
+      { who: "user", type: "question", text: text, ts: new Date().toISOString() },
+      { who: "mala", type: "answer", text: answer, ts: new Date().toISOString() }
     ];
 
-    // Call OpenAI (chat completion)
-    const completion = await openai.createChatCompletion({
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini', // choose your model
-      messages,
-      max_tokens: 700,
-      temperature: 0.2
-    });
-
-    const answerText = completion.data.choices?.[0]?.message?.content?.trim();
-    // token usage (if available)
-    const usage = completion.data.usage || null;
-
-    // Save to DB history (non-blocking but ensure saved for MVP)
     let saved = false;
     try {
       await prisma.history.create({
         data: {
-          userId: req.user?.id || null,
-          question: text,
-          answer: answerText || '',
-          language: lang,
-          source: 'voice'
+          // title: first 60 chars of question
+          title: text.slice(0, 60),
+          screenText: text,
+          explanation: answer,
+          transcript
         }
       });
       saved = true;
     } catch (dbErr) {
-      console.error('History save failed', dbErr.message);
-      // don't fail the whole request; just log
+      console.error("history save failed:", dbErr?.message || dbErr);
+      // do not fail the request on DB error; just log it
     }
 
-    // Optionally generate TTS (may be slow)
-    let tts = null;
-    if (wantTTS) {
-      tts = await generateTTS(answerText || '', lang);
-    }
-
-    // return
-    const payload = {
-      answerText,
-      tts: tts || null,
-      saved,
-      usage
-    };
-
-    return res.json(payload);
+    return res.json({ answerText: answer, saved });
   } catch (err) {
-    console.error('/talk error', err.message || err);
-    return res.status(500).json({ error: 'server error', details: err.message });
+    console.error("POST /api/v1/talk error:", err?.message || err);
+    return res.status(500).json({ error: "internal_error", details: String(err?.message || err) });
   }
 });
 
-module.exports = router;
+export default router;
