@@ -15,7 +15,6 @@ datasource db {
 
 model History {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Text
-  userId      String?  @map("user_id") @db.Text
   title       String?  @db.Text
   screenText  String   @map("screen_text") @db.Text
   explanation String   @db.Text
@@ -26,7 +25,6 @@ model History {
   updatedAt   DateTime @map("updated_at") @default(now()) @updatedAt
 
   @@map("history")
-  @@index([userId], name: "idx_history_user_id")
   @@index([createdAt], name: "idx_history_created_at")
 }
 
