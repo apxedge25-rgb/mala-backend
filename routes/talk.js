@@ -1,7 +1,7 @@
 // routes/talk.js
 import express from "express";
 import OpenAI from "openai";
-import prisma from "../prismaClient.js"; // adjust path if needed
+import prisma from "../prismaClient.js";
 
 const router = express.Router();
 
@@ -13,74 +13,79 @@ if (process.env.OPENAI_API_KEY) {
   console.warn("WARNING: OPENAI_API_KEY not set in environment!");
 }
 
-/**
- * Helper: call ChatGPT
- * Keeps same model behavior as server.js
- */
+// ✅ Correct OpenAI call (NEW Responses API)
 async function callChatGPT(systemPrompt, userPrompt, max_tokens = 800) {
   if (!openai) throw new Error("OpenAI key missing");
 
-  const resp = await openai.chat.completions.create({
-    model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-    messages: [
+  const response = await openai.responses.create({
+    model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+    input: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt }
     ],
-    max_tokens,
-    temperature: 0.2
+    max_output_tokens: max_tokens
   });
 
-  return resp.choices?.[0]?.message?.content ?? "";
+  return response.output_text;
 }
 
 /**
  * POST /
- * Body: { text: string, language?: 'en'|'hi'|'te' }
- * Response: { answerText, saved }
+ * Body: { text: string }
+ * Language is read from DB (UserSetting)
  */
 router.post("/", async (req, res) => {
   try {
-    const { text, language = "en" } = req.body;
+    const { text } = req.body;
+
     if (!text || typeof text !== "string" || text.trim().length === 0) {
       return res.status(400).json({ error: "text is required" });
     }
 
-    // map language label for prompt clarity
+    // 🔹 Get saved language (no auth → single default user)
+    const setting = await prisma.userSetting.findUnique({
+      where: { userId: "default" }
+    });
+
+    const language = setting?.language || "en";
+
     const langLabel =
-      language === "hi" ? "Hindi" : language === "te" ? "Telugu" : "English";
+      language === "hi"
+        ? "Hindi"
+        : language === "te"
+        ? "Telugu"
+        : "English";
 
-    const systemPrompt = `You are Mala.ai. Reply simply and clearly in ${langLabel}. Provide a 1-2 line summary, 2-3 short bullet points, and one quick example when appropriate. Keep language friendly and concise for a student.`;
+    const systemPrompt = `You are Mala.ai. Reply simply and clearly in ${langLabel}. Explain like teaching a beginner.`;
 
-    // Use the raw text user sent as the user prompt
     const answer = await callChatGPT(systemPrompt, text, 700);
 
-    // build transcript entry (keeps format consistent with schema)
-    const transcript = [
-      { who: "user", type: "question", text: text, ts: new Date().toISOString() },
-      { who: "mala", type: "answer", text: answer, ts: new Date().toISOString() }
-    ];
-
+    // Save history
     let saved = false;
     try {
       await prisma.history.create({
         data: {
-          // title: first 60 chars of question
           title: text.slice(0, 60),
           screenText: text,
           explanation: answer,
-          transcript
+          transcript: [
+            { who: "user", text },
+            { who: "mala", text: answer }
+          ]
         }
       });
       saved = true;
     } catch (dbErr) {
       console.error("history save failed:", dbErr?.message || dbErr);
-      // do not fail the request on DB error; just log it
     }
 
     return res.json({ answerText: answer, saved });
   } catch (err) {
     console.error("POST /api/v1/talk error:", err?.message || err);
-    return res.status(500).json({ error: "internal_error", details: String(err?.message || err) });
+    return res.status(500).json({
+      error: "internal_error",
+      details: String(err?.message || err)
+    });
   }
 });
 
