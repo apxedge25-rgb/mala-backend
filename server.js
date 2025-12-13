@@ -17,21 +17,26 @@ if (process.env.OPENAI_API_KEY) {
   console.warn("WARNING: OPENAI_API_KEY not set in environment!");
 }
 
-// Helper: ChatGPT call
+// ✅ FIXED: NEW OpenAI Responses API
 async function callChatGPT(systemPrompt, userPrompt, max_tokens = 800) {
   if (!openai) throw new Error("OpenAI key missing");
 
-  const resp = await openai.chat.completions.create({
-    model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt }
+  const response = await openai.responses.create({
+    model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+    input: [
+      {
+        role: "system",
+        content: systemPrompt
+      },
+      {
+        role: "user",
+        content: userPrompt
+      }
     ],
-    max_tokens,
-    temperature: 0.2
+    max_output_tokens: max_tokens
   });
 
-  return resp.choices?.[0]?.message?.content ?? "";
+  return response.output_text;
 }
 
 // ---------------- HEALTH ----------------
@@ -102,26 +107,18 @@ Add one-line summary starting with "SUMMARY:".`;
     });
   } catch (err) {
     console.error("explain-screen error:", err);
-    return res
-      .status(500)
-      .json({ error: "internal_error", details: String(err?.message || err) });
+    return res.status(500).json({ error: "internal_error", details: String(err.message) });
   }
 });
 
 // ---------------- FOLLOW-UP ----------------
 app.post("/api/v1/follow-up", async (req, res) => {
   try {
-    const {
-      historyId,
-      userQuestion,
-      resumeToken = { segmentIndex: 0 },
-      language = "en"
-    } = req.body;
+    const { historyId, userQuestion, resumeToken = { segmentIndex: 0 }, language = "en" } = req.body;
 
-    if (!historyId || !userQuestion)
-      return res
-        .status(400)
-        .json({ error: "historyId and userQuestion required" });
+    if (!historyId || !userQuestion) {
+      return res.status(400).json({ error: "historyId and userQuestion required" });
+    }
 
     const history = await prisma.history.findUnique({ where: { id: historyId } });
     if (!history) return res.status(404).json({ error: "history not found" });
@@ -130,13 +127,8 @@ app.post("/api/v1/follow-up", async (req, res) => {
     const segmentsEntry = transcript.find(t => t.type === "segments");
     const segments = segmentsEntry?.segments || [];
 
-    const segIndex =
-      resumeToken.segmentIndex && Number.isInteger(resumeToken.segmentIndex)
-        ? resumeToken.segmentIndex
-        : 0;
-
-    const startContext = Math.max(0, segIndex - 2);
-    const contextSegments = segments.slice(startContext, segIndex).join("\n");
+    const segIndex = Number.isInteger(resumeToken.segmentIndex) ? resumeToken.segmentIndex : 0;
+    const contextSegments = segments.slice(Math.max(0, segIndex - 2), segIndex).join("\n");
 
     const langLabel =
       language === "hi" ? "Hindi" : language === "te" ? "Telugu" : "English";
@@ -149,106 +141,52 @@ app.post("/api/v1/follow-up", async (req, res) => {
 Full screen text:
 """${history.screenText}"""
 
-User asks: "${userQuestion}"
-
-Answer briefly in ${langLabel}. Then output the JSON resumeIndex.`;
+User asks: "${userQuestion}"`;
 
     const reply = await callChatGPT(systemPrompt, userPrompt, 350);
 
-    let resumeIndex = segIndex;
-    const jsonMatch = reply.match(/\{[^}]*"resumeIndex"[^}]*\}/);
-    if (jsonMatch) {
-      try {
-        const parsed = JSON.parse(jsonMatch[0]);
-        if (typeof parsed.resumeIndex === "number")
-          resumeIndex = parsed.resumeIndex;
-      } catch (err) {
-        console.warn("resumeIndex parse failed");
-      }
-    }
-
-    const newTranscript = [...transcript];
-    newTranscript.push({
-      who: "user",
-      type: "question",
-      text: userQuestion,
-      ts: new Date().toISOString()
-    });
-    newTranscript.push({
-      who: "mala",
-      type: "followup_answer",
-      text: reply,
-      ts: new Date().toISOString()
-    });
-
     await prisma.history.update({
       where: { id: historyId },
-      data: {
-        transcript: newTranscript,
-        updatedAt: new Date()
-      }
+      data: { transcript: [...transcript, { who: "mala", type: "followup", text: reply }] }
     });
 
-    return res.json({
-      answer: reply,
-      resumeToken: { segmentIndex: resumeIndex }
-    });
+    return res.json({ answer: reply, resumeToken: { segmentIndex: segIndex + 1 } });
   } catch (err) {
     console.error("follow-up error:", err);
-    return res
-      .status(500)
-      .json({ error: "internal_error", details: String(err?.message || err) });
+    return res.status(500).json({ error: "internal_error", details: String(err.message) });
   }
 });
 
-// ---------------- TALK (VOICE CHAT) ----------------
+// ---------------- TALK ----------------
 app.post("/api/v1/talk", async (req, res) => {
   try {
     const { text, language = "en" } = req.body;
-    if (!text || typeof text !== "string") {
-      return res.status(400).json({ error: "text is required" });
-    }
+    if (!text) return res.status(400).json({ error: "text is required" });
 
     const langLabel =
       language === "hi" ? "Hindi" : language === "te" ? "Telugu" : "English";
 
-    const systemPrompt = `You are Mala.ai. Speak simply in ${langLabel}. Answer in 1–2 lines + 2–3 bullet points + 1 small example.`;
+    const systemPrompt = `You are Mala.ai. Speak simply in ${langLabel}.`;
 
     const answer = await callChatGPT(systemPrompt, text, 700);
 
-    const transcript = [
-      { who: "user", type: "question", text, ts: new Date().toISOString() },
-      { who: "mala", type: "answer", text: answer, ts: new Date().toISOString() }
-    ];
-
-    let saved = false;
-    try {
-      await prisma.history.create({
-        data: {
-          title: text.slice(0, 60),
-          screenText: text,
-          explanation: answer,
-          transcript
-        }
-      });
-      saved = true;
-    } catch (err) {
-      console.error("history save failed:", err.message);
-    }
-
-    return res.json({
-      answerText: answer,
-      saved
+    await prisma.history.create({
+      data: {
+        title: text.slice(0, 60),
+        screenText: text,
+        explanation: answer,
+        transcript: [{ who: "mala", text: answer }]
+      }
     });
+
+    return res.json({ answerText: answer, saved: true });
   } catch (err) {
-    console.error("/talk error:", err.message);
-    return res
-      .status(500)
-      .json({ error: "internal_error", details: String(err?.message || err) });
+    console.error("talk error:", err);
+    return res.status(500).json({ error: "internal_error", details: String(err.message) });
   }
 });
 
-// ---------------- START SERVER ----------------
+// ---------------- START ----------------
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Mala backend MVP running on port ${PORT}`);
