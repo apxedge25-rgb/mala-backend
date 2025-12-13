@@ -9,9 +9,7 @@ datasource db {
 }
 
 /// FINAL Prisma schema for Mala.ai MVP
-/// - History: stores Q&A, explanation, transcript JSON
-/// - UserSetting: per-user language preference
-/// - PdfDocument / PdfExplanation: lightweight PDF support
+/// History matches EXISTING database columns ONLY
 
 model History {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Text
@@ -19,8 +17,6 @@ model History {
   screenText  String   @map("screen_text") @db.Text
   explanation String   @db.Text
   transcript  Json     @db.JsonB
-  language    String?  @db.Text
-  source      String?  @db.Text
   createdAt   DateTime @map("created_at") @default(now())
   updatedAt   DateTime @map("updated_at") @default(now()) @updatedAt
 
