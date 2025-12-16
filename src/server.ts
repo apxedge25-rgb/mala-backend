@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import dotenv from "dotenv";
 import cors from "@fastify/cors";
 import prisma from "./prisma.js";
+import { generateAccessToken } from "./utils/token.js";
 
 dotenv.config();
 
@@ -9,7 +10,7 @@ const app = Fastify({
   logger: true
 });
 
-// ✅ ENABLE CORS (THIS FIXES NETWORK / INTERCEPTOR ERROR)
+// ✅ ENABLE CORS
 await app.register(cors, {
   origin: true
 });
@@ -17,15 +18,16 @@ await app.register(cors, {
 const PORT = Number(process.env.PORT) || 3000;
 
 /**
- * Health check
+ * Health check (public)
  */
 app.get("/health", async () => {
   return { status: "ok" };
 });
 
 /**
- * User init (create user if not exists)
- * Device-based identity
+ * User init (public)
+ * - Create user if not exists
+ * - Issue access token
  */
 app.post("/api/v1/user/init", async (request, reply) => {
   const { deviceId } = request.body as { deviceId?: string };
@@ -44,9 +46,13 @@ app.post("/api/v1/user/init", async (request, reply) => {
     });
   }
 
+  // 🔐 ISSUE ACCESS TOKEN
+  const token = generateAccessToken(user.id);
+
   return {
     id: user.id,
-    status: user.status
+    status: user.status,
+    token
   };
 });
 
