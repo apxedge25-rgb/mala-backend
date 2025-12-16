@@ -1,11 +1,17 @@
 import Fastify from "fastify";
 import dotenv from "dotenv";
+import cors from "@fastify/cors";
 import prisma from "./prisma.js";
 
 dotenv.config();
 
 const app = Fastify({
   logger: true
+});
+
+// ✅ ENABLE CORS (THIS FIXES NETWORK / INTERCEPTOR ERROR)
+await app.register(cors, {
+  origin: true
 });
 
 const PORT = Number(process.env.PORT) || 3000;
