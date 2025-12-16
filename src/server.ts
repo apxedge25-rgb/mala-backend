@@ -2,10 +2,10 @@ import Fastify from "fastify";
 import dotenv from "dotenv";
 import cors from "@fastify/cors";
 
-import prisma from "../prisma.js";
-import { generateAccessToken } from "../utils/token.js";
-import { authMiddleware } from "../middleware/auth.js";
-import { verifyGoogleToken } from "../utils/google.js";
+import prisma from "../prisma";
+import { generateAccessToken } from "../utils/token";
+import { authMiddleware } from "../middleware/auth";
+import { verifyGoogleToken } from "../utils/google";
 
 dotenv.config();
 
