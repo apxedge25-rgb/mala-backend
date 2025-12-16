@@ -14,14 +14,18 @@ enum UserStatus {
 }
 
 model User {
-  id           String     @id @default(uuid())
-  deviceId     String?    @unique
-  email        String?    @unique
-  phone        String?    @unique
-  googleId     String?    @unique
+  id        String     @id @default(uuid())
 
-  status       UserStatus @default(ACTIVE)
+  // Core identity (required)
+  deviceId  String     @unique
 
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  // Login methods (optional, link later)
+  email     String?    @unique
+  phone     String?    @unique
+  googleId  String?    @unique
+
+  status    UserStatus @default(ACTIVE)
+
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 }
