@@ -11,7 +11,8 @@
   "dependencies": {
     "fastify": "^4.26.2",
     "dotenv": "^16.4.5",
-    "@prisma/client": "^5.14.0"
+    "@prisma/client": "^5.14.0",
+    "@fastify/cors": "^8.5.0"
   },
   "devDependencies": {
     "prisma": "^5.14.0",
@@ -20,3 +21,4 @@
     "typescript": "^5.4.5"
   }
 }
+
