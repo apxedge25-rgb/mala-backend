@@ -1,10 +1,11 @@
 import Fastify from "fastify";
 import dotenv from "dotenv";
 import cors from "@fastify/cors";
-import prisma from "./prisma.js";
-import { generateAccessToken } from "./utils/token.js";
-import { authMiddleware } from "./middleware/auth.js";
-import { verifyGoogleToken } from "./utils/google.js";
+
+import prisma from "../prisma.js";
+import { generateAccessToken } from "../utils/token.js";
+import { authMiddleware } from "../middleware/auth.js";
+import { verifyGoogleToken } from "../utils/google.js";
 
 dotenv.config();
 
@@ -104,9 +105,6 @@ app.post("/api/v1/auth/google", async (request, reply) => {
 app.register(async function (protectedRoutes) {
   protectedRoutes.addHook("preHandler", authMiddleware);
 
-  /**
-   * Get current user
-   */
   protectedRoutes.get("/api/v1/me", async (request) => {
     const user = (request as any).user;
 
@@ -122,7 +120,6 @@ app.register(async function (protectedRoutes) {
    * --------------------
    */
 
-  // GET settings
   protectedRoutes.get("/api/v1/settings", async (request) => {
     const userId = (request as any).user.id;
 
@@ -144,7 +141,6 @@ app.register(async function (protectedRoutes) {
     };
   });
 
-  // UPDATE settings
   protectedRoutes.post("/api/v1/settings", async (request, reply) => {
     const userId = (request as any).user.id;
     const { language, overlayEnabled, micConsent, screenConsent } =
