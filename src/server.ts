@@ -4,6 +4,7 @@ import cors from "@fastify/cors";
 import prisma from "./prisma.js";
 import { generateAccessToken } from "./utils/token.js";
 import { authMiddleware } from "./middleware/auth.js";
+import { verifyGoogleToken } from "./utils/google.js";
 
 dotenv.config();
 
@@ -53,6 +54,57 @@ app.post("/api/v1/user/init", async (request, reply) => {
     });
   }
 
+  const token = generateAccessToken(user.id);
+
+  return {
+    id: user.id,
+    status: user.status,
+    token
+  };
+});
+
+/**
+ * Google login (public)
+ * - Verify Google ID token
+ * - Link Google account to existing user
+ * - Issue JWT
+ */
+app.post("/api/v1/auth/google", async (request, reply) => {
+  const { idToken, deviceId } = request.body as {
+    idToken?: string;
+    deviceId?: string;
+  };
+
+  if (!idToken || !deviceId) {
+    return reply.status(400).send({
+      error: "idToken and deviceId are required"
+    });
+  }
+
+  // 1️⃣ Verify Google token with Google
+  const googleUser = await verifyGoogleToken(idToken);
+
+  // 2️⃣ Find existing user by deviceId
+  const user = await prisma.user.findUnique({
+    where: { deviceId }
+  });
+
+  if (!user) {
+    return reply.status(404).send({
+      error: "User not found for device"
+    });
+  }
+
+  // 3️⃣ Link Google account (idempotent)
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      googleId: googleUser.googleId,
+      email: googleUser.email
+    }
+  });
+
+  // 4️⃣ Issue our JWT
   const token = generateAccessToken(user.id);
 
   return {
