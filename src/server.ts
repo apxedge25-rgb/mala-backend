@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import cors from "@fastify/cors";
 import prisma from "./prisma.js";
 import { generateAccessToken } from "./utils/token.js";
+import { authMiddleware } from "./middleware/auth.js";
 
 dotenv.config();
 
@@ -46,7 +47,6 @@ app.post("/api/v1/user/init", async (request, reply) => {
     });
   }
 
-  // 🔐 ISSUE ACCESS TOKEN
   const token = generateAccessToken(user.id);
 
   return {
@@ -55,6 +55,22 @@ app.post("/api/v1/user/init", async (request, reply) => {
     token
   };
 });
+
+/**
+ * 🔐 Protected test route (auth middleware check)
+ */
+app.get(
+  "/api/v1/protected",
+  { preHandler: authMiddleware },
+  async (request) => {
+    const user = (request as any).user;
+
+    return {
+      message: "Access granted",
+      userId: user.id
+    };
+  }
+);
 
 /**
  * Start server
