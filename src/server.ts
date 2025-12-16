@@ -19,6 +19,12 @@ await app.register(cors, {
 const PORT = Number(process.env.PORT) || 3000;
 
 /**
+ * --------------------
+ * PUBLIC ROUTES
+ * --------------------
+ */
+
+/**
  * Health check (public)
  */
 app.get("/health", async () => {
@@ -57,23 +63,33 @@ app.post("/api/v1/user/init", async (request, reply) => {
 });
 
 /**
- * 🔐 Protected test route (auth middleware check)
+ * --------------------
+ * PROTECTED ROUTES
+ * --------------------
  */
-app.get(
-  "/api/v1/protected",
-  { preHandler: authMiddleware },
-  async (request) => {
+app.register(async function (protectedRoutes) {
+  // 🔐 Apply auth middleware to ALL routes here
+  protectedRoutes.addHook("preHandler", authMiddleware);
+
+  /**
+   * Get current user (who am I)
+   */
+  protectedRoutes.get("/api/v1/me", async (request) => {
     const user = (request as any).user;
 
     return {
-      message: "Access granted",
-      userId: user.id
+      id: user.id,
+      status: user.status
     };
-  }
-);
+  });
+
+  // 🔒 Future protected APIs go here
+});
 
 /**
- * Start server
+ * --------------------
+ * START SERVER
+ * --------------------
  */
 app.listen({ port: PORT, host: "0.0.0.0" })
   .then(() => {
