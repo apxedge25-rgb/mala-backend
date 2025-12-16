@@ -1,5 +1,3 @@
-console.log("🔥 SERVER FILE LOADED");
-
 import Fastify from "fastify";
 import dotenv from "dotenv";
 import cors from "@fastify/cors";
