@@ -1,6 +1,6 @@
 import { FastifyRequest, FastifyReply } from "fastify";
-import prisma from "../prisma.js";
-import { verifyAccessToken } from "../utils/token.js";
+import prisma from "./prisma.js";
+import { verifyAccessToken } from "./token.js";
 
 export async function authMiddleware(
   request: FastifyRequest,
