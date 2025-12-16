@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "prisma generate && prisma migrate deploy && tsc",
+    "build": "prisma generate && tsc",
     "start": "node dist/server.js"
   },
   "dependencies": {
