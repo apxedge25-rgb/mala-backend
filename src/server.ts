@@ -25,18 +25,10 @@ const PORT = Number(process.env.PORT) || 3000;
  * --------------------
  */
 
-/**
- * Health check (public)
- */
 app.get("/health", async () => {
   return { status: "ok" };
 });
 
-/**
- * User init (public)
- * - Create user if not exists
- * - Issue access token
- */
 app.post("/api/v1/user/init", async (request, reply) => {
   const { deviceId } = request.body as { deviceId?: string };
 
@@ -63,12 +55,6 @@ app.post("/api/v1/user/init", async (request, reply) => {
   };
 });
 
-/**
- * Google login (public)
- * - Verify Google ID token
- * - Link Google account to existing user
- * - Issue JWT
- */
 app.post("/api/v1/auth/google", async (request, reply) => {
   const { idToken, deviceId } = request.body as {
     idToken?: string;
@@ -81,10 +67,8 @@ app.post("/api/v1/auth/google", async (request, reply) => {
     });
   }
 
-  // 1️⃣ Verify Google token with Google
   const googleUser = await verifyGoogleToken(idToken);
 
-  // 2️⃣ Find existing user by deviceId
   const user = await prisma.user.findUnique({
     where: { deviceId }
   });
@@ -95,7 +79,6 @@ app.post("/api/v1/auth/google", async (request, reply) => {
     });
   }
 
-  // 3️⃣ Link Google account (idempotent)
   await prisma.user.update({
     where: { id: user.id },
     data: {
@@ -104,7 +87,6 @@ app.post("/api/v1/auth/google", async (request, reply) => {
     }
   });
 
-  // 4️⃣ Issue our JWT
   const token = generateAccessToken(user.id);
 
   return {
@@ -120,11 +102,10 @@ app.post("/api/v1/auth/google", async (request, reply) => {
  * --------------------
  */
 app.register(async function (protectedRoutes) {
-  // 🔐 Apply auth middleware to ALL routes here
   protectedRoutes.addHook("preHandler", authMiddleware);
 
   /**
-   * Get current user (who am I)
+   * Get current user
    */
   protectedRoutes.get("/api/v1/me", async (request) => {
     const user = (request as any).user;
@@ -135,7 +116,77 @@ app.register(async function (protectedRoutes) {
     };
   });
 
-  // 🔒 Future protected APIs go here
+  /**
+   * --------------------
+   * PHASE 3 — SETTINGS
+   * --------------------
+   */
+
+  // GET settings
+  protectedRoutes.get("/api/v1/settings", async (request) => {
+    const userId = (request as any).user.id;
+
+    let settings = await prisma.userSetting.findUnique({
+      where: { userId }
+    });
+
+    if (!settings) {
+      settings = await prisma.userSetting.create({
+        data: { userId }
+      });
+    }
+
+    return {
+      language: settings.language,
+      overlayEnabled: settings.overlayEnabled,
+      micConsent: settings.micConsent,
+      screenConsent: settings.screenConsent
+    };
+  });
+
+  // UPDATE settings
+  protectedRoutes.post("/api/v1/settings", async (request, reply) => {
+    const userId = (request as any).user.id;
+    const { language, overlayEnabled, micConsent, screenConsent } =
+      request.body as any;
+
+    const updateData: any = {};
+
+    if (language) {
+      if (!["en", "hi", "te"].includes(language)) {
+        return reply.status(400).send({ error: "invalid_language" });
+      }
+      updateData.language = language;
+    }
+
+    if (typeof overlayEnabled === "boolean") {
+      updateData.overlayEnabled = overlayEnabled;
+    }
+
+    if (typeof micConsent === "boolean") {
+      updateData.micConsent = micConsent;
+    }
+
+    if (typeof screenConsent === "boolean") {
+      updateData.screenConsent = screenConsent;
+    }
+
+    const settings = await prisma.userSetting.upsert({
+      where: { userId },
+      update: updateData,
+      create: { userId, ...updateData }
+    });
+
+    return {
+      success: true,
+      settings: {
+        language: settings.language,
+        overlayEnabled: settings.overlayEnabled,
+        micConsent: settings.micConsent,
+        screenConsent: settings.screenConsent
+      }
+    };
+  });
 });
 
 /**
