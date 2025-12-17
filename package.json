@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "prisma generate && tsc",
-    "postbuild": "prisma db push",
     "start": "node dist/server.js"
   },
   "dependencies": {
