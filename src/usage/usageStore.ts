@@ -1,11 +1,16 @@
 // src/usage/usageStore.ts
 
+type ConversationUsage = {
+  startTime: number; // timestamp in ms
+  secondsUsed: number;
+};
+
 type DailyUsage = {
   date: string;
   conversationsUsed: number;
+  currentConversation?: ConversationUsage;
 };
 
-// In-memory store (logic-final, storage-temporary)
 const usageMap = new Map<string, DailyUsage>();
 
 function today(): string {
@@ -13,8 +18,7 @@ function today(): string {
 }
 
 /**
- * Get today's usage for a user.
- * Automatically resets when date changes.
+ * Get today's usage for a user (resets daily)
  */
 export function getDailyUsage(userId: string): DailyUsage {
   const currentDate = today();
@@ -33,7 +37,7 @@ export function getDailyUsage(userId: string): DailyUsage {
 }
 
 /**
- * Check if user has reached daily conversation limit
+ * Check if daily conversation limit is reached
  */
 export function hasReachedDailyLimit(
   userId: string,
@@ -44,11 +48,46 @@ export function hasReachedDailyLimit(
 }
 
 /**
- * Increment conversation count for today
- * Call this ONLY after limit check passes
+ * Start a new conversation timer
  */
-export function incrementConversation(userId: string): void {
+export function startConversation(userId: string): void {
   const usage = getDailyUsage(userId);
+
+  usage.currentConversation = {
+    startTime: Date.now(),
+    secondsUsed: 0
+  };
+
+  usageMap.set(userId, usage);
+}
+
+/**
+ * Get remaining seconds for the current conversation
+ */
+export function getRemainingSeconds(
+  userId: string,
+  maxSeconds: number
+): number {
+  const usage = getDailyUsage(userId);
+  const convo = usage.currentConversation;
+
+  if (!convo) return maxSeconds;
+
+  const elapsed =
+    convo.secondsUsed +
+    Math.floor((Date.now() - convo.startTime) / 1000);
+
+  return Math.max(0, maxSeconds - elapsed);
+}
+
+/**
+ * End conversation and increment daily count
+ */
+export function endConversation(userId: string): void {
+  const usage = getDailyUsage(userId);
+
   usage.conversationsUsed += 1;
+  delete usage.currentConversation;
+
   usageMap.set(userId, usage);
 }
