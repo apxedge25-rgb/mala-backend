@@ -1,6 +1,6 @@
 // src/plans/resolveUserPlan.ts
 
-import { PLANS } from "./config";
+import { PLANS } from "./config.js";
 import { PlanConfig, PlanId } from "./types.js";
 
 export function resolveUserPlan(req: any): PlanConfig {
