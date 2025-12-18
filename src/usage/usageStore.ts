@@ -18,7 +18,7 @@ function today(): string {
 }
 
 /**
- * Get today's usage for a user (resets daily)
+ * Get today's usage for a user (auto-resets daily)
  */
 export function getDailyUsage(userId: string): DailyUsage {
   const currentDate = today();
@@ -48,15 +48,18 @@ export function hasReachedDailyLimit(
 }
 
 /**
- * Start a new conversation timer
+ * Start a new conversation (called ONCE per intent)
  */
 export function startConversation(userId: string): void {
   const usage = getDailyUsage(userId);
 
-  usage.currentConversation = {
-    startTime: Date.now(),
-    secondsUsed: 0
-  };
+  // Do not overwrite if already running (resume case)
+  if (!usage.currentConversation) {
+    usage.currentConversation = {
+      startTime: Date.now(),
+      secondsUsed: 0
+    };
+  }
 
   usageMap.set(userId, usage);
 }
@@ -73,15 +76,26 @@ export function getRemainingSeconds(
 
   if (!convo) return maxSeconds;
 
-  const elapsed =
+  const elapsedSeconds =
     convo.secondsUsed +
     Math.floor((Date.now() - convo.startTime) / 1000);
 
-  return Math.max(0, maxSeconds - elapsed);
+  return Math.max(0, maxSeconds - elapsedSeconds);
+}
+
+/**
+ * Check if time for this conversation is exhausted
+ */
+export function hasTimeExpired(
+  userId: string,
+  maxSeconds: number
+): boolean {
+  return getRemainingSeconds(userId, maxSeconds) <= 0;
 }
 
 /**
  * End conversation and increment daily count
+ * Call ONLY once per conversation
  */
 export function endConversation(userId: string): void {
   const usage = getDailyUsage(userId);
