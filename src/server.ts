@@ -7,6 +7,9 @@ import { generateAccessToken } from "./token.js";
 import { authMiddleware } from "./auth.js";
 import { verifyGoogleToken } from "./google.js";
 
+// ✅ PHASE 4A: PLAN RESOLVER
+import { resolveUserPlan } from "./plans/resolveUserPlan.js";
+
 dotenv.config();
 
 const app = Fastify({
@@ -22,12 +25,25 @@ const PORT = Number(process.env.PORT) || 3000;
 
 /**
  * --------------------
+ * GLOBAL PLAN ATTACH (PHASE 4A)
+ * --------------------
+ * Every request gets req.plan
+ */
+app.addHook("preHandler", async (request, reply) => {
+  (request as any).plan = resolveUserPlan(request);
+});
+
+/**
+ * --------------------
  * PUBLIC ROUTES
  * --------------------
  */
 
-app.get("/health", async () => {
-  return { status: "ok" };
+app.get("/health", async (request) => {
+  return {
+    status: "ok",
+    plan: (request as any).plan // for testing only, you can remove later
+  };
 });
 
 app.post("/api/v1/user/init", async (request, reply) => {
@@ -103,20 +119,23 @@ app.post("/api/v1/auth/google", async (request, reply) => {
  * --------------------
  */
 app.register(async function (protectedRoutes) {
+  // AUTH FIRST
   protectedRoutes.addHook("preHandler", authMiddleware);
 
   protectedRoutes.get("/api/v1/me", async (request) => {
     const user = (request as any).user;
+    const plan = (request as any).plan;
 
     return {
       id: user.id,
-      status: user.status
+      status: user.status,
+      plan // for testing only
     };
   });
 
   /**
    * --------------------
-   * PHASE 3 — SETTINGS
+   * PHASE 3 — SETTINGS (FROZEN)
    * --------------------
    */
 
@@ -190,7 +209,8 @@ app.register(async function (protectedRoutes) {
  * START SERVER
  * --------------------
  */
-app.listen({ port: PORT, host: "0.0.0.0" })
+app
+  .listen({ port: PORT, host: "0.0.0.0" })
   .then(() => {
     console.log(`🚀 Mala backend running on port ${PORT}`);
   })
