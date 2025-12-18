@@ -1,6 +1,6 @@
 // src/plans/guards.ts
 
-import { PlanConfig } from "./types";
+import { PlanConfig } from "./types.js";
 
 export function canUseScreenExplain(plan: PlanConfig): boolean {
   return plan.screenExplain;
