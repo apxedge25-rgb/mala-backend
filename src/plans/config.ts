@@ -1,6 +1,6 @@
 // src/plans/config.ts
 
-import { PlanConfig } from "./types";
+import { PlanConfig } from "./types.js";
 
 export const PLANS: Record<string, PlanConfig> = {
   FREE: {
