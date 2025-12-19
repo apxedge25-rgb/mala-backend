@@ -7,8 +7,11 @@ import { generateAccessToken } from "./token.js";
 import { authMiddleware } from "./auth.js";
 import { verifyGoogleToken } from "./google.js";
 
-// ✅ PHASE 4A: PLAN RESOLVER
+// PHASE 4A
 import { resolveUserPlan } from "./plans/resolveUserPlan.js";
+
+// PHASE 9/10A
+import { talkHandler } from "./routes/talk.js";
 
 dotenv.config();
 
@@ -16,7 +19,7 @@ const app = Fastify({
   logger: true
 });
 
-// ✅ ENABLE CORS
+// ENABLE CORS
 await app.register(cors, {
   origin: true
 });
@@ -25,25 +28,12 @@ const PORT = Number(process.env.PORT) || 3000;
 
 /**
  * --------------------
- * GLOBAL PLAN ATTACH (PHASE 4A)
- * --------------------
- * Every request gets req.plan
- */
-app.addHook("preHandler", async (request, reply) => {
-  (request as any).plan = resolveUserPlan(request);
-});
-
-/**
- * --------------------
  * PUBLIC ROUTES
  * --------------------
  */
 
-app.get("/health", async (request) => {
-  return {
-    status: "ok",
-    plan: (request as any).plan // for testing only, you can remove later
-  };
+app.get("/health", async () => {
+  return { status: "ok" };
 });
 
 app.post("/api/v1/user/init", async (request, reply) => {
@@ -122,6 +112,11 @@ app.register(async function (protectedRoutes) {
   // AUTH FIRST
   protectedRoutes.addHook("preHandler", authMiddleware);
 
+  // PLAN RESOLUTION (PHASE 4A)
+  protectedRoutes.addHook("preHandler", async (request) => {
+    (request as any).plan = resolveUserPlan(request);
+  });
+
   protectedRoutes.get("/api/v1/me", async (request) => {
     const user = (request as any).user;
     const plan = (request as any).plan;
@@ -129,7 +124,7 @@ app.register(async function (protectedRoutes) {
     return {
       id: user.id,
       status: user.status,
-      plan // for testing only
+      plan
     };
   });
 
@@ -202,6 +197,13 @@ app.register(async function (protectedRoutes) {
       }
     };
   });
+
+  /**
+   * --------------------
+   * PHASE 9/10A — TALK
+   * --------------------
+   */
+  protectedRoutes.post("/api/v1/talk", talkHandler);
 });
 
 /**
