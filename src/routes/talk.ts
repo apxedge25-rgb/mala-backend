@@ -1,7 +1,6 @@
 // src/routes/talk.ts
 
 import OpenAI from "openai";
-import { resolveUserPlan } from "../plans/resolveUserPlan.js";
 import {
   hasReachedDailyLimit,
   startConversation,
@@ -15,7 +14,7 @@ const openai = new OpenAI({
 
 export async function talkHandler(request: any, reply: any) {
   try {
-    // 1️⃣ Get user
+    // 1️⃣ Auth user (already injected by middleware)
     const user = request.user;
     if (!user) {
       return reply.status(401).send({ error: "unauthorized" });
@@ -23,20 +22,30 @@ export async function talkHandler(request: any, reply: any) {
 
     const userId = user.id;
 
-    // 2️⃣ Resolve plan
-    const plan = resolveUserPlan(request);
+    // 2️⃣ Get resolved plan (from server.ts)
+    const plan = request.plan;
+    if (!plan) {
+      return reply.status(500).send({ error: "plan_not_resolved" });
+    }
 
-    // 3️⃣ Check daily conversation limit
+    // 3️⃣ Validate input FIRST (do not burn time)
+    const { message } = request.body as { message?: string };
+
+    if (!message || typeof message !== "string") {
+      return reply.status(400).send({ error: "message is required" });
+    }
+
+    // 4️⃣ Check daily conversation limit
     if (hasReachedDailyLimit(userId, plan.convosPerDay)) {
       return reply.send({
         text: "That’s all for today. We’ll continue tomorrow."
       });
     }
 
-    // 4️⃣ Start or resume conversation
+    // 5️⃣ Start conversation (single-turn for now)
     startConversation(userId);
 
-    // 5️⃣ Check time limit BEFORE OpenAI
+    // 6️⃣ Enforce time limit BEFORE OpenAI
     if (hasTimeExpired(userId, plan.maxSecondsPerConvo)) {
       endConversation(userId);
       return reply.send({
@@ -44,13 +53,7 @@ export async function talkHandler(request: any, reply: any) {
       });
     }
 
-    const { message } = request.body as { message?: string };
-
-    if (!message || typeof message !== "string") {
-      return reply.status(400).send({ error: "message is required" });
-    }
-
-    // 6️⃣ Call OpenAI (TEXT ONLY)
+    // 7️⃣ Call OpenAI (TEXT ONLY)
     const completion = await openai.responses.create({
       model: "gpt-4o-mini",
       input: message,
@@ -61,10 +64,10 @@ export async function talkHandler(request: any, reply: any) {
       completion.output_text ||
       "Sorry, I couldn’t understand that.";
 
-    // 7️⃣ End conversation
+    // 8️⃣ End conversation (Phase 10 will change this)
     endConversation(userId);
 
-    // 8️⃣ Return response
+    // 9️⃣ Return response
     return reply.send({
       text,
       meta: {
