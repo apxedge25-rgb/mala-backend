@@ -38,7 +38,7 @@ model UserSetting {
   userId         String   @unique
 
   // Phase 3 preferences
-  language       String   @default("en") // en | hi | te
+  language       String   @default("en")
   overlayEnabled Boolean  @default(false)
 
   // Explicit consents (Play Store critical)
@@ -48,9 +48,5 @@ model UserSetting {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  user User @relation(
-    fields: [userId],
-    references: [id],
-    onDelete: Cascade
-  )
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
