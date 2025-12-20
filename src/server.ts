@@ -7,10 +7,9 @@ import { generateAccessToken } from "./token.js";
 import { authMiddleware } from "./auth.js";
 import { verifyGoogleToken } from "./google.js";
 
-// PHASE 4A
+// Phase imports
 import { resolveUserPlan } from "./plans/resolveUserPlan.js";
-
-// PHASE 9/10A
+import { getOrCreateUserSettings } from "./settings/settingsService.js";
 import { talkHandler } from "./routes/talk.js";
 
 dotenv.config();
@@ -19,7 +18,7 @@ const app = Fastify({
   logger: true
 });
 
-// ENABLE CORS
+// CORS
 await app.register(cors, {
   origin: true
 });
@@ -109,43 +108,42 @@ app.post("/api/v1/auth/google", async (request, reply) => {
  * --------------------
  */
 app.register(async function (protectedRoutes) {
-  // AUTH FIRST
+  // 1️⃣ AUTH
   protectedRoutes.addHook("preHandler", authMiddleware);
 
-  // PLAN RESOLUTION (PHASE 4A)
+  // 2️⃣ PLAN RESOLUTION (Phase 4A)
   protectedRoutes.addHook("preHandler", async (request) => {
     (request as any).plan = resolveUserPlan(request);
+  });
+
+  // 3️⃣ SETTINGS ATTACH (Phase 3 HARDENED)
+  protectedRoutes.addHook("preHandler", async (request) => {
+    const user = (request as any).user;
+    const settings = await getOrCreateUserSettings(user.id);
+    (request as any).settings = settings;
   });
 
   protectedRoutes.get("/api/v1/me", async (request) => {
     const user = (request as any).user;
     const plan = (request as any).plan;
+    const settings = (request as any).settings;
 
     return {
       id: user.id,
       status: user.status,
-      plan
+      plan,
+      settings
     };
   });
 
   /**
    * --------------------
-   * PHASE 3 — SETTINGS (FROZEN)
+   * PHASE 3 — SETTINGS
    * --------------------
    */
 
   protectedRoutes.get("/api/v1/settings", async (request) => {
-    const userId = (request as any).user.id;
-
-    let settings = await prisma.userSetting.findUnique({
-      where: { userId }
-    });
-
-    if (!settings) {
-      settings = await prisma.userSetting.create({
-        data: { userId }
-      });
-    }
+    const settings = (request as any).settings;
 
     return {
       language: settings.language,
@@ -181,29 +179,34 @@ app.register(async function (protectedRoutes) {
       updateData.screenConsent = screenConsent;
     }
 
-    const settings = await prisma.userSetting.upsert({
+    const settings = await prisma.userSetting.update({
       where: { userId },
-      update: updateData,
-      create: { userId, ...updateData }
+      data: updateData
     });
 
     return {
       success: true,
-      settings: {
-        language: settings.language,
-        overlayEnabled: settings.overlayEnabled,
-        micConsent: settings.micConsent,
-        screenConsent: settings.screenConsent
-      }
+      settings
     };
   });
 
   /**
    * --------------------
-   * PHASE 9/10A — TALK
+   * PHASE 9 / 10A — TALK
    * --------------------
    */
-  protectedRoutes.post("/api/v1/talk", talkHandler);
+  protectedRoutes.post("/api/v1/talk", async (request, reply) => {
+    const settings = (request as any).settings;
+
+    // 🔒 CONSENT ENFORCEMENT (Phase 3 FINAL)
+    if (!settings.micConsent) {
+      return reply.status(403).send({
+        error: "mic_consent_required"
+      });
+    }
+
+    return talkHandler(request, reply);
+  });
 });
 
 /**
